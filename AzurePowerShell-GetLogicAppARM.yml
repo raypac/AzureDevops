@@ -1,0 +1,30 @@
+- task: AzurePowerShell@4
+  env:
+    ARTIFACT_DIR: $(Build.ArtifactStagingDirectory)
+  inputs:
+    azureSubscription: 'sub-raylight-dev (someguid)'
+    azurePowerShellVersion: 'LatestVersion'
+    ScriptType: 'InlineScript'    
+    Inline:  |
+      Install-Module LogicAppTemplate -Force
+      Import-Module LogicAppTemplate
+      $subscriptionId = 'someguid'
+      $resourceGroupName = 'rg-raylight-dev'
+      $logicApps = Get-AzResource -ResourceGroupName $resourceGroupName -ResourceType 'Microsoft.Logic/workflows'
+      foreach ($logicApp in $logicApps)
+      {
+        $fileForFactory = "$($env:ARTIFACT_DIR)/$($logicApp.Name)ForFactory.json"
+        $fileParametersForFactory = "$($env:ARTIFACT_DIR)/$($logicApp.Name)ParametersForFactory.json"
+        
+        $parameters = @{
+            Token = (az account get-access-token | ConvertFrom-Json).accessToken
+            LogicApp = $logicApp.Name
+            ResourceGroup = $logicApp.ResourceGroupName
+            SubscriptionId = $subscriptionId
+            Verbose = $true
+        }
+        $token = Get-AzAccessToken -ResourceUrl "https://management.azure.com" | Select-Object -ExpandProperty Token
+        Get-LogicAppTemplate @parameters -Token $token -Verbose | Out-File $fileForFactory
+        Get-ParameterTemplate -TemplateFile $fileForFactory -KeyVault Static -Verbose | Out-File $fileParametersForFactory
+      }
+  displayName: 'Get Logic App Template'
